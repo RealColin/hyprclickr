@@ -5,11 +5,10 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::thread::sleep;
 
-use gtk4::ffi::GtkBox;
 use uinput::event::controller::Mouse;
-use uinput::event::{keyboard, Controller};
+use uinput::event::{Controller};
 
-use gtk4::{gdk, prelude::*, Box, CssProvider, Fixed, Image, Overlay};
+use gtk4::{gdk, prelude::*, Align, Box, CssProvider, Frame, GestureClick, Orientation, Overlay, StyleContext, ToggleButton};
 use gtk4::{Application, ApplicationWindow, Button, Label};
 use glib::clone;
 
@@ -94,7 +93,7 @@ fn build_ui(app: &Application) {
         }
     ");
 
-    gtk4::StyleContext::add_provider_for_display(
+    StyleContext::add_provider_for_display(
         &gdk::Display::default().unwrap(),
         &provider,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
@@ -106,12 +105,12 @@ fn build_ui(app: &Application) {
     // let profiles_label = Label::new(Some("Profiles"));
     // let settings_label = Label::new(Some("Settings"));
 
-    let inner = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
+    let inner = Box::new(Orientation::Horizontal, 10);
     inner.append(&build_profiles_box(&app_state));
     inner.append(&build_settings_box(&app_state));
 
     let title_label = Label::new(Some("Hyprclickr"));
-    let outer = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
+    let outer = Box::new(Orientation::Vertical, 10);
     outer.set_margin_top(5);
     outer.set_margin_bottom(5);
     outer.set_margin_start(5);
@@ -134,20 +133,20 @@ fn build_ui(app: &Application) {
     window.present();
 }
 
-fn render_profiles_list(container: &gtk4::Box, profiles: &[Profile], app_state: Rc<AppState>) {
+fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<AppState>) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
 
     for (i, profile) in profiles.iter().enumerate() {
-        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
+        let row = Box::new(Orientation::Horizontal, 2);
 
         let name_label = Label::new(Some(&profile.name));
         name_label.set_hexpand(true);
-        name_label.set_halign(gtk4::Align::Start);
+        name_label.set_halign(Align::Start);
 
         // ✅ Selection only when clicking the label
-        let gesture = gtk4::GestureClick::new();
+        let gesture = GestureClick::new();
         gesture.connect_pressed(clone!(@strong app_state, @strong container => move |_, _, _, _| {
             *app_state.selected_profile_index.borrow_mut() = Some(i);
             render_profiles_list(&container, &load_profiles(), app_state.clone());
@@ -168,13 +167,13 @@ fn render_profiles_list(container: &gtk4::Box, profiles: &[Profile], app_state: 
         activate_label.set_margin_start(0);
         activate_label.set_margin_end(0);
         
-        let activate_button = gtk4::ToggleButton::new();
+        let activate_button = ToggleButton::new();
         activate_button.set_child(Some(&activate_label));
         activate_button.set_size_request(5, 5);
         activate_button.set_hexpand(false);
         activate_button.set_vexpand(false);
         activate_button.set_has_frame(false);
-        activate_button.set_halign(gtk4::Align::End);
+        activate_button.set_halign(Align::End);
         activate_button.set_active(profile.active);
 
         let delete_label = Label::new(Some("D"));
@@ -189,17 +188,15 @@ fn render_profiles_list(container: &gtk4::Box, profiles: &[Profile], app_state: 
         delete_button.set_hexpand(false);
         delete_button.set_vexpand(false);
         delete_button.set_has_frame(false);
-        delete_button.set_halign(gtk4::Align::End);
+        delete_button.set_halign(Align::End);
 
 
         row.append(&name_label);
         row.append(&activate_button);
-        // row.append(&rename_button);
         row.append(&delete_button);
 
         container.append(&row);
 
-        
         let apst = app_state.clone();
         let container_clone = container.clone();
         delete_button.connect_clicked(move |_| {
@@ -217,8 +214,6 @@ fn render_profiles_list(container: &gtk4::Box, profiles: &[Profile], app_state: 
             save_profiles(&profiles);
             render_profiles_list(&container_clone, &profiles, apst.clone());
         });
-
-        
     }
 
     let new_button = Button::with_label("+ New Profile");
@@ -239,15 +234,15 @@ fn render_profiles_list(container: &gtk4::Box, profiles: &[Profile], app_state: 
 
 }
 
-fn build_profiles_box(app_state: &Rc<AppState>) -> gtk4::Box{
+fn build_profiles_box(app_state: &Rc<AppState>) -> Box{
     let label = Label::new(Some("Profiles"));
-    label.set_valign(gtk4::Align::Start);
-    label.set_halign(gtk4::Align::Start);
+    label.set_valign(Align::Start);
+    label.set_halign(Align::Start);
     label.set_margin_top(0);
     label.set_margin_start(8);
 
-    let list = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
+    let list = Box::builder()
+        .orientation(Orientation::Vertical)
         .spacing(5)
         .build();
 
@@ -255,7 +250,7 @@ fn build_profiles_box(app_state: &Rc<AppState>) -> gtk4::Box{
 
     let list_clone = list.clone();
 
-    let frame = gtk4::Frame::builder()
+    let frame = Frame::builder()
         .child(&list)
         .build();
 
@@ -270,7 +265,7 @@ fn build_profiles_box(app_state: &Rc<AppState>) -> gtk4::Box{
     overlay.set_child(Some(&frame));
     overlay.add_overlay(&label);
 
-    let ret = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
+    let ret = Box::new(Orientation::Vertical, 10);
     ret.append(&overlay);
 
     let profiles = load_profiles();
@@ -279,14 +274,14 @@ fn build_profiles_box(app_state: &Rc<AppState>) -> gtk4::Box{
     ret
 }
 
-fn build_settings_box(app_state: &Rc<AppState>) -> gtk4::Box{
+fn build_settings_box(app_state: &Rc<AppState>) -> Box{
     let label = Label::new(Some("Settings"));
-    label.set_valign(gtk4::Align::Start);
-    label.set_halign(gtk4::Align::Start);
+    label.set_valign(Align::Start);
+    label.set_halign(Align::Start);
     label.set_margin_top(0);
     label.set_margin_start(8);
 
-    let frame = gtk4::Frame::builder()
+    let frame = Frame::builder()
         .build();
 
     frame.set_width_request(400);
@@ -299,7 +294,7 @@ fn build_settings_box(app_state: &Rc<AppState>) -> gtk4::Box{
     overlay.set_child(Some(&frame));
     overlay.add_overlay(&label);
 
-    let ret = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    let ret = Box::new(Orientation::Vertical, 0);
     ret.append(&overlay);
     ret
 }
