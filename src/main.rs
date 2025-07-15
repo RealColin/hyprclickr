@@ -41,6 +41,8 @@ struct Profile {
 
 struct AppState {
     selected_profile_index: Rc<RefCell<Option<usize>>>,
+    profile_list_box: Box,
+    settings_box: Box,
 }
 
 fn main() {
@@ -99,15 +101,24 @@ fn build_ui(app: &Application) {
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
+    let profile_list_box = Box::new(Orientation::Vertical, 10);
+    let settings_box = Box::new(Orientation::Vertical, 10);
+
     let app_state = Rc::new(AppState {
         selected_profile_index: Rc::new(RefCell::new(None)),
+        profile_list_box: profile_list_box.clone(),
+        settings_box: settings_box.clone(),
     });
-    // let profiles_label = Label::new(Some("Profiles"));
-    // let settings_label = Label::new(Some("Settings"));
+
+    build_profiles_box(&app_state);
+    build_settings_box(&app_state);
+
 
     let inner = Box::new(Orientation::Horizontal, 10);
-    inner.append(&build_profiles_box(&app_state));
-    inner.append(&build_settings_box(&app_state));
+    inner.append(&app_state.profile_list_box);
+    inner.append(&app_state.settings_box);
+    // inner.append(&build_profiles_box(&app_state));
+    // inner.append(&build_settings_box(&app_state));
 
     let title_label = Label::new(Some("Hyprclickr"));
     let outer = Box::new(Orientation::Vertical, 10);
@@ -150,6 +161,7 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
         gesture.connect_pressed(clone!(@strong app_state, @strong container => move |_, _, _, _| {
             *app_state.selected_profile_index.borrow_mut() = Some(i);
             render_profiles_list(&container, &load_profiles(), app_state.clone());
+            build_settings_box(&app_state);
         }));
         name_label.add_controller(gesture);
 
@@ -204,6 +216,7 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
             profiles.remove(i);
             save_profiles(&profiles);
             render_profiles_list(&container_clone, &profiles, apst.clone());
+            build_settings_box(&apst.clone());
         });
 
         let apst = app_state.clone();
@@ -229,12 +242,16 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
             active: false,
         });
         save_profiles(&profiles);
+        *app_state.selected_profile_index.borrow_mut() = Some(profiles.len() - 1);
         render_profiles_list(&container_clone, &profiles, app_state.clone());
+        build_settings_box(&app_state.clone());
     });
 
 }
 
-fn build_profiles_box(app_state: &Rc<AppState>) -> Box{
+fn build_profiles_box(app_state: &Rc<AppState>){
+    let container = &app_state.profile_list_box;
+    
     let label = Label::new(Some("Profiles"));
     label.set_valign(Align::Start);
     label.set_halign(Align::Start);
@@ -254,8 +271,6 @@ fn build_profiles_box(app_state: &Rc<AppState>) -> Box{
         .child(&list)
         .build();
 
-
-
     frame.set_width_request(150);
     frame.set_height_request(340);
     frame.set_margin_start(10);
@@ -265,23 +280,44 @@ fn build_profiles_box(app_state: &Rc<AppState>) -> Box{
     overlay.set_child(Some(&frame));
     overlay.add_overlay(&label);
 
-    let ret = Box::new(Orientation::Vertical, 10);
-    ret.append(&overlay);
+    container.append(&overlay);
 
     let profiles = load_profiles();
     render_profiles_list(&list_clone, &profiles, app_state.clone());
 
-    ret
 }
 
-fn build_settings_box(app_state: &Rc<AppState>) -> Box{
+fn build_settings_box(app_state: &Rc<AppState>){
+    let container = &app_state.settings_box;
+
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+
     let label = Label::new(Some("Settings"));
     label.set_valign(Align::Start);
     label.set_halign(Align::Start);
     label.set_margin_top(0);
     label.set_margin_start(8);
 
+    let joe = Label::new(Some(""));
+    joe.set_valign(Align::Center);
+    joe.set_halign(Align::Center);
+
+    let selected_index = *app_state.selected_profile_index.borrow();
+
+    if let Some(index) = selected_index {
+        let profiles = load_profiles();
+        if let Some(profile) = profiles.get(index) {
+            joe.set_text(&format!("Editing: {}", profile.name));
+        }
+    } else {
+        joe.set_text("Nothing selected.");
+    }
+
+
     let frame = Frame::builder()
+        .child(&joe)
         .build();
 
     frame.set_width_request(400);
@@ -294,9 +330,7 @@ fn build_settings_box(app_state: &Rc<AppState>) -> Box{
     overlay.set_child(Some(&frame));
     overlay.add_overlay(&label);
 
-    let ret = Box::new(Orientation::Vertical, 0);
-    ret.append(&overlay);
-    ret
+    container.append(&overlay);
 }
 
 fn get_profiles_path() -> PathBuf {
