@@ -41,7 +41,7 @@ struct Profile {
 }
 
 struct AppState {
-    seletected_profile_index: Rc<RefCell<Option<usize>>>,
+    selected_profile_index: Rc<RefCell<Option<usize>>>,
 }
 
 fn main() {
@@ -101,7 +101,7 @@ fn build_ui(app: &Application) {
     );
 
     let app_state = Rc::new(AppState {
-        seletected_profile_index: Rc::new(RefCell::new(None)),
+        selected_profile_index: Rc::new(RefCell::new(None)),
     });
     // let profiles_label = Label::new(Some("Profiles"));
     // let settings_label = Label::new(Some("Settings"));
@@ -140,27 +140,21 @@ fn render_profiles_list(container: &gtk4::Box, profiles: &[Profile], app_state: 
     }
 
     for (i, profile) in profiles.iter().enumerate() {
-        let row = Box::new(gtk4::Orientation::Horizontal, 2);
+        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
 
         let name_label = Label::new(Some(&profile.name));
         name_label.set_hexpand(true);
         name_label.set_halign(gtk4::Align::Start);
 
+        // ✅ Selection only when clicking the label
         let gesture = gtk4::GestureClick::new();
-        gesture.connect_pressed(clone!(@strong app_state, @strong container => move |gesture, _, x, y| {
-            if let Some(target) = gesture.widget().and_then(|w| w.root()).and_then(|root| root.pick(x, y, gtk4::PickFlags::DEFAULT)) {
-        // Don't select if a Button (or ToggleButton) was clicked
-                if target.is::<gtk4::Button>() || target.is::<gtk4::ToggleButton>() {
-                    return;
-                }
-            }
-
-            *app_state.seletected_profile_index.borrow_mut() = Some(i);
+        gesture.connect_pressed(clone!(@strong app_state, @strong container => move |_, _, _, _| {
+            *app_state.selected_profile_index.borrow_mut() = Some(i);
             render_profiles_list(&container, &load_profiles(), app_state.clone());
         }));
-        row.add_controller(gesture);
+        name_label.add_controller(gesture);
 
-        let is_selected = app_state.seletected_profile_index.borrow().map_or(false, |selected| selected == i);
+        let is_selected = app_state.selected_profile_index.borrow().map_or(false, |selected| selected == i);
 
         if is_selected {
             row.set_css_classes(&["selected-profile"]);
