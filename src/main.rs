@@ -294,11 +294,29 @@ fn build_settings_box(app_state: &Rc<AppState>){
         container.remove(&child);
     }
 
-    let label = Label::new(Some("Settings"));
-    label.set_valign(Align::Start);
-    label.set_halign(Align::Start);
-    label.set_margin_top(0);
-    label.set_margin_start(8);
+    let options_box = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(10)
+        .build();
+
+    options_box.set_margin_start(5);
+    options_box.set_margin_top(20);
+
+    let mouse_button = Label::new(Some("Mouse Button"));
+    mouse_button.set_valign(Align::Start);
+    mouse_button.set_halign(Align::Start);
+
+    let click_pattern = Label::new(Some("Click Pattern"));
+    click_pattern.set_valign(Align::Start);
+    click_pattern.set_halign(Align::Start);
+
+    let activation = Label::new(Some("Activation"));
+    activation.set_valign(Align::Start);
+    activation.set_halign(Align::Start);
+
+    let hotkey = Label::new(Some("Hotkey"));
+    hotkey.set_valign(Align::Start);
+    hotkey.set_halign(Align::Start);
 
     let joe = Label::new(Some(""));
     joe.set_valign(Align::Center);
@@ -315,9 +333,14 @@ fn build_settings_box(app_state: &Rc<AppState>){
         joe.set_text("Nothing selected.");
     }
 
+    options_box.append(&mouse_button);
+    options_box.append(&click_pattern);
+    options_box.append(&activation);
+    options_box.append(&hotkey);
+    options_box.append(&joe);
 
     let frame = Frame::builder()
-        .child(&joe)
+        .child(&options_box)
         .build();
 
     frame.set_width_request(400);
@@ -325,10 +348,15 @@ fn build_settings_box(app_state: &Rc<AppState>){
     frame.set_margin_start(10);
     frame.set_margin_top(7);
 
+    let settings_label = Label::new(Some("Settings"));
+    settings_label.set_valign(Align::Start);
+    settings_label.set_halign(Align::Start);
+    settings_label.set_margin_top(0);
+    settings_label.set_margin_start(8);
 
     let overlay = Overlay::new();
     overlay.set_child(Some(&frame));
-    overlay.add_overlay(&label);
+    overlay.add_overlay(&settings_label);
 
     container.append(&overlay);
 }
