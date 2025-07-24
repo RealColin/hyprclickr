@@ -8,7 +8,7 @@ use std::thread::sleep;
 use uinput::event::controller::Mouse;
 use uinput::event::{Controller};
 
-use gtk4::{gdk, prelude::*, Align, Box, CssProvider, Frame, GestureClick, Orientation, Overlay, StyleContext, ToggleButton};
+use gtk4::{gdk, prelude::*, Align, Box, ComboBoxText, CssProvider, DropDown, EventControllerKey, Expression, Frame, GestureClick, Orientation, Overlay, StringList, StyleContext, ToggleButton};
 use gtk4::{Application, ApplicationWindow, Button, Label};
 use glib::clone;
 
@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-
 enum MouseButton {
     Left,
     Right,
@@ -32,10 +31,81 @@ enum ClickPattern {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+enum Activation {
+    Toggle,
+    Hold,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+enum Modifier {
+    Ctrl,
+    Shift,
+    Alt,
+}
+
+impl Modifier {
+    fn to_string(&self) -> &str {
+        match self {
+            Self::Ctrl => "CTRL",
+            Self::Shift => "SHIFT",
+            Self::Alt => "ALT",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+enum Key {
+    Char(char),
+    F(u8),
+    Escape,
+    Enter,
+    Tab,
+    Space,
+    Backspace,
+}
+
+impl Key {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Char(c) => c.to_string(),
+            Self::F(f) => format!("F{f}"),
+            Self::Escape => "ESCAPE".to_string(),
+            Self::Enter => "ENTER".to_string(),
+            Self::Tab => "TAB".to_string(),
+            Self::Space => "SPACE".to_string(),
+            Self::Backspace => "BACKSPACE".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Hotkey {
+    modifiers: Vec<Modifier>,
+    key: Key,
+}
+
+impl Hotkey {
+    fn to_string(&self) -> String {
+        let mut ret = String::from("");
+        
+        for modifier in self.modifiers.clone() {
+            ret += modifier.to_string();
+            ret += " + ";
+        }
+
+        ret += &self.key.to_string();
+
+        ret
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct Profile {
     name: String,
     mouse_button: MouseButton,
     click_pattern: ClickPattern,
+    activation: Activation,
+    hotkey: Hotkey,
     active: bool,
 }
 
@@ -239,6 +309,8 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
             name: format!("Profile {}", profiles.len() + 1),
             mouse_button: MouseButton::Left,
             click_pattern: ClickPattern::Normal,
+            activation: Activation::Toggle,
+            hotkey: Hotkey { modifiers: (vec![]), key: (Key::F(8)) },
             active: false,
         });
         save_profiles(&profiles);
@@ -289,58 +361,14 @@ fn build_profiles_box(app_state: &Rc<AppState>){
 
 fn build_settings_box(app_state: &Rc<AppState>){
     let container = &app_state.settings_box;
+    container.set_focusable(true);
+    container.set_can_focus(true);
 
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
 
-    let options_box = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(10)
-        .build();
-
-    options_box.set_margin_start(5);
-    options_box.set_margin_top(20);
-
-    let mouse_button = Label::new(Some("Mouse Button"));
-    mouse_button.set_valign(Align::Start);
-    mouse_button.set_halign(Align::Start);
-
-    let click_pattern = Label::new(Some("Click Pattern"));
-    click_pattern.set_valign(Align::Start);
-    click_pattern.set_halign(Align::Start);
-
-    let activation = Label::new(Some("Activation"));
-    activation.set_valign(Align::Start);
-    activation.set_halign(Align::Start);
-
-    let hotkey = Label::new(Some("Hotkey"));
-    hotkey.set_valign(Align::Start);
-    hotkey.set_halign(Align::Start);
-
-    let joe = Label::new(Some(""));
-    joe.set_valign(Align::Center);
-    joe.set_halign(Align::Center);
-
-    let selected_index = *app_state.selected_profile_index.borrow();
-
-    if let Some(index) = selected_index {
-        let profiles = load_profiles();
-        if let Some(profile) = profiles.get(index) {
-            joe.set_text(&format!("Editing: {}", profile.name));
-        }
-    } else {
-        joe.set_text("Nothing selected.");
-    }
-
-    options_box.append(&mouse_button);
-    options_box.append(&click_pattern);
-    options_box.append(&activation);
-    options_box.append(&hotkey);
-    options_box.append(&joe);
-
     let frame = Frame::builder()
-        .child(&options_box)
         .build();
 
     frame.set_width_request(400);
@@ -348,6 +376,137 @@ fn build_settings_box(app_state: &Rc<AppState>){
     frame.set_margin_start(10);
     frame.set_margin_top(7);
 
+    let selected_index = *app_state.selected_profile_index.borrow();
+    let profiles = load_profiles();
+
+    if let Some(profile) = selected_index.and_then(|i| profiles.get(i)) {
+        let options_box = Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(10)
+            .build();
+
+        options_box.set_margin_start(5);
+        options_box.set_margin_top(20);
+
+        let mouse_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
+        let mouse_label = Label::new(Some("Mouse Button"));
+        let mouse_options = vec!["Left", "Right", "Middle"];
+        let mouse_dropdown = DropDown::from_strings(&mouse_options);
+        let mouse_selected = match profile.mouse_button {
+            MouseButton::Left => 0,
+            MouseButton::Right => 1,
+            MouseButton::Middle => 2,
+        };
+        mouse_dropdown.set_selected(mouse_selected);
+        mouse_dropdown.connect_selected_notify(move |dd| {
+            let selected = match dd.selected() {
+                0 => MouseButton::Left,
+                1 => MouseButton::Right,
+                2 => MouseButton::Middle,
+                _ => MouseButton::Right,
+            };
+
+            if let Some(index) = selected_index {
+                let mut profiles = load_profiles();
+                profiles[index].mouse_button = selected;
+                save_profiles(&profiles);
+            }
+        });
+
+        mouse_row.append(&mouse_label);
+        mouse_row.append(&mouse_dropdown);
+
+        let click_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
+        let click_label = Label::new(Some("Click Pattern"));
+        let click_options = vec!["Normal", "Jitter", "Butterfly", "Drag"];
+        let click_dropdown = DropDown::from_strings(&click_options);
+        let click_selected = match profile.click_pattern {
+            ClickPattern::Normal => 0,
+            ClickPattern::Jitter => 1,
+            ClickPattern::Butterfly => 2,
+            ClickPattern::Drag => 3,
+        };
+        click_dropdown.set_selected(click_selected);
+        click_dropdown.connect_selected_notify(move |dd| {
+            let selected = match dd.selected() {
+                0 => ClickPattern::Normal,
+                1 => ClickPattern::Jitter,
+                2 => ClickPattern::Butterfly,
+                3 => ClickPattern::Drag,
+                _ => ClickPattern::Normal
+            };
+
+            if let Some(index) = selected_index {
+                let mut profiles = load_profiles();
+                profiles[index].click_pattern = selected;
+                save_profiles(&profiles);
+            }
+        });
+
+        click_row.append(&click_label);
+        click_row.append(&click_dropdown);
+
+        let activation_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
+        let activation_label = Label::new(Some("Activation"));
+        let activation_options = vec!["Toggle", "Hold"];
+        let activation_dropdown = DropDown::from_strings(&activation_options);
+        let activation_selected = match profile.activation {
+            Activation::Toggle => 0,
+            Activation::Hold => 1,
+        };
+        activation_dropdown.set_selected(activation_selected);
+        activation_dropdown.connect_selected_item_notify(move |dd| {
+            let selected = match dd.selected() {
+                0 => Activation::Toggle,
+                1 => Activation::Hold,
+                _ => Activation::Toggle,
+            };
+
+            if let Some(index) = selected_index {
+                let mut profiles = load_profiles();
+                profiles[index].activation = selected;
+                save_profiles(&profiles);
+            }
+        });
+
+        activation_row.append(&activation_label);
+        activation_row.append(&activation_dropdown);
+
+        let hotkey_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
+        let hotkey_label = Label::new(Some("Hotkey"));
+        let hotkey_button = Button::with_label(&profile.hotkey.to_string());
+        let hotkey_button_clone = hotkey_button.clone();
+
+        hotkey_button.connect_clicked(move |_| {
+            let controller = EventControllerKey::new();
+            let controller_clone = controller.clone();
+            let button_inner = hotkey_button_clone.clone();
+
+            controller.connect_key_pressed(move |_, keyval, _, _| {
+                if let Some(keyname) = gdk::Key::from(keyval).name() {
+                    button_inner.set_label(&keyname);
+                }
+
+                button_inner.remove_controller(&controller_clone);
+                gtk4::glib::Propagation::Stop
+            });
+
+            hotkey_button_clone.add_controller(controller);
+        });
+
+        hotkey_row.append(&hotkey_label);
+        hotkey_row.append(&hotkey_button);
+        
+        options_box.append(&mouse_row);
+        options_box.append(&click_row);
+        options_box.append(&activation_row);
+        options_box.append(&hotkey_row);
+        frame.set_child(Some(&options_box));
+    } else {
+         let label = Label::new(Some("Nothing Selected."));
+         frame.set_child(Some(&label));
+    }
+    
     let settings_label = Label::new(Some("Settings"));
     settings_label.set_valign(Align::Start);
     settings_label.set_halign(Align::Start);
@@ -359,6 +518,7 @@ fn build_settings_box(app_state: &Rc<AppState>){
     overlay.add_overlay(&settings_label);
 
     container.append(&overlay);
+
 }
 
 fn get_profiles_path() -> PathBuf {
