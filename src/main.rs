@@ -10,7 +10,7 @@ use uinput::event::{Controller};
 
 use gtk4::{gdk, prelude::*, Align, Box, ComboBoxText, CssProvider, DropDown, EventControllerKey, Expression, Frame, GestureClick, Orientation, Overlay, StringList, StyleContext, ToggleButton};
 use gtk4::{Application, ApplicationWindow, Button, Label};
-use glib::clone;
+use glib::{clone, GString};
 
 use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
@@ -59,7 +59,6 @@ enum Key {
     F(u8),
     Escape,
     Enter,
-    Tab,
     Space,
     Backspace,
 }
@@ -71,7 +70,6 @@ impl Key {
             Self::F(f) => format!("F{f}"),
             Self::Escape => "ESCAPE".to_string(),
             Self::Enter => "ENTER".to_string(),
-            Self::Tab => "TAB".to_string(),
             Self::Space => "SPACE".to_string(),
             Self::Backspace => "BACKSPACE".to_string(),
         }
@@ -482,20 +480,58 @@ fn build_settings_box(app_state: &Rc<AppState>){
             let controller_clone = controller.clone();
             let button_inner = hotkey_button_clone.clone();
 
-            controller.connect_key_pressed(move |_, keyval, _, state| {
+            controller.connect_key_released(move |_, keyval, _, state| {
                 if let Some(keyname) = gdk::Key::from(keyval).name() {
+                    let mut modifiers = vec![];
+
                     if state.contains(gdk::ModifierType::CONTROL_MASK) {
-                        button_inner.set_label(&format!("{} + {}", "CTRL", &keyname));
-                    } else {
-                        button_inner.set_label(&keyname);
+                        modifiers.push(Modifier::Ctrl);
                     }
+                    if state.contains(gdk::ModifierType::SHIFT_MASK) {
+                        modifiers.push(Modifier::Shift);
+                    }
+                    if state.contains(gdk::ModifierType::ALT_MASK) {
+                        modifiers.push(Modifier::Alt);
+                    }
+
+                    match keyname.as_str() {
+                        "Control_L" => modifiers.clear(),
+                        "Control_R" => modifiers.clear(),
+                        "Alt_L" => modifiers.clear(),
+                        "Alt_R" => modifiers.clear(),
+                        "Shift_L" => modifiers.clear(),
+                        "Shift_R" => modifiers.clear(),
+                        _ => (),
+                    }
+
+                    let okey = gtk_key_to_custom_key(keyname);
+
+                    if let Some(key) = okey {
+                        let hotkey = Hotkey {
+                            modifiers,
+                            key,
+                        };
+
+                        let cloned_hotkey = hotkey.clone();
+
+                        if let Some(index) = selected_index {
+                            let mut profiles = load_profiles();
+                            profiles[index].hotkey = cloned_hotkey;
+                            save_profiles(&profiles);
+
+                            button_inner.set_label(&hotkey.to_string());
+                        }
+                    }
+
+                    // if state.contains(gdk::ModifierType::CONTROL_MASK) {
+                    //     button_inner.set_label(&format!("{} + {}", "CTRL", &keyname));
+                    // } else {
+                    //     button_inner.set_label(&keyname);
+                    // }
 
                 }
 
-                
-
                 button_inner.remove_controller(&controller_clone);
-                gtk4::glib::Propagation::Stop
             });
 
             hotkey_button_clone.add_controller(controller);
@@ -526,6 +562,47 @@ fn build_settings_box(app_state: &Rc<AppState>){
 
     container.append(&overlay);
 
+}
+
+fn gtk_key_to_custom_key(keyname: GString) -> Option<Key> {
+    match keyname.as_str() {
+        "Escape" => Some(Key::Escape),
+        "Return" => Some(Key::Enter),
+        "space" => Some(Key::Space),
+        "BackSpace" => Some(Key::Backspace),
+        f if f.starts_with('F') => {
+            let num_str = &f[1..];
+            if let Ok(num) = num_str.parse::<u8>() {
+                Some(Key::F(num))
+            } else {
+                None
+            }
+        }
+        c if c.len() == 1 => c.chars().next().map(Key::Char),
+        _ => None,
+    }
+
+    // if let Some(name) = key.name() {
+    //     match name.as_str() {
+    //         "Escape" => Some(Key::Escape),
+    //         "Return" => Some(Key::Enter),
+    //         "Tab" => Some(Key::Tab),
+    //         "space" => Some(Key::Space),
+    //         "BackSpace" => Some(Key::Backspace),
+    //         f if f.starts_with('F') => {
+    //             let num_str = &f[1..];
+    //             if let Ok(num) = num_str.parse::<u8>() {
+    //                 Some(Key::F(num))
+    //             } else {
+    //                 None
+    //             }
+    //         }
+    //         c if c.len() == 1 => c.chars().next().map(Key::Char),
+    //         _ => None,
+    //     }
+    // } else {
+    //     None
+    // }
 }
 
 fn get_profiles_path() -> PathBuf {
