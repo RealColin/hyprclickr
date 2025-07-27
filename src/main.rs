@@ -61,6 +61,12 @@ enum Key {
     Enter,
     Space,
     Backspace,
+    Control_L,
+    Control_R,
+    Shift_L,
+    Shift_R,
+    Alt_L,
+    Alt_R,
 }
 
 impl Key {
@@ -72,6 +78,12 @@ impl Key {
             Self::Enter => "ENTER".to_string(),
             Self::Space => "SPACE".to_string(),
             Self::Backspace => "BACKSPACE".to_string(),
+            Self::Control_L => "CTRL_L".to_string(),
+            Self::Control_R => "CTRL_R".to_string(),
+            Self::Shift_L => "SHIFT_L".to_string(),
+            Self::Shift_R => "SHIFT_R".to_string(),
+            Self::Alt_L => "ALT_L".to_string(),
+            Self::Alt_R => "ALT_R".to_string(),
         }
     }
 }
@@ -570,6 +582,12 @@ fn gtk_key_to_custom_key(keyname: GString) -> Option<Key> {
         "Return" => Some(Key::Enter),
         "space" => Some(Key::Space),
         "BackSpace" => Some(Key::Backspace),
+        "Control_L" => Some(Key::Control_L),
+        "Control_R" => Some(Key::Control_R),
+        "Shift_L" => Some(Key::Shift_L),
+        "Shift_R" => Some(Key::Shift_R),
+        "Alt_L" => Some(Key::Alt_L),
+        "Alt_R" => Some(Key::Alt_R),
         f if f.starts_with('F') => {
             let num_str = &f[1..];
             if let Ok(num) = num_str.parse::<u8>() {
