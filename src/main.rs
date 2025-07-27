@@ -482,10 +482,17 @@ fn build_settings_box(app_state: &Rc<AppState>){
             let controller_clone = controller.clone();
             let button_inner = hotkey_button_clone.clone();
 
-            controller.connect_key_pressed(move |_, keyval, _, _| {
+            controller.connect_key_pressed(move |_, keyval, _, state| {
                 if let Some(keyname) = gdk::Key::from(keyval).name() {
-                    button_inner.set_label(&keyname);
+                    if state.contains(gdk::ModifierType::CONTROL_MASK) {
+                        button_inner.set_label(&format!("{} + {}", "CTRL", &keyname));
+                    } else {
+                        button_inner.set_label(&keyname);
+                    }
+
                 }
+
+                
 
                 button_inner.remove_controller(&controller_clone);
                 gtk4::glib::Propagation::Stop
