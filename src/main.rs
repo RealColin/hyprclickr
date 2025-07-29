@@ -130,23 +130,6 @@ fn main() {
         .application_id("com.colin.hyprclickr")
         .build();
 
-    
-
-    // let test = vec![
-    //     Profile {
-    //         name: "Joe".to_string(),
-    //         mouse_button: MouseButton::Left,
-    //         click_pattern: ClickPattern::Butterfly,
-    //     },
-    //     Profile {
-    //         name: "Donald".to_string(),
-    //         mouse_button: MouseButton::Right,
-    //         click_pattern: ClickPattern::Drag,
-    //     },
-    // ];
-
-    // save_profiles(&test);
-
     app.connect_activate(build_ui);
 
     app.run();
@@ -268,36 +251,10 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
         activate_button.set_halign(Align::End);
         activate_button.set_active(profile.active);
 
-        let delete_label = Label::new(Some("D"));
-        delete_label.set_margin_top(0);
-        delete_label.set_margin_bottom(0);
-        delete_label.set_margin_start(0);
-        delete_label.set_margin_end(0);
-        
-        let delete_button = Button::new();
-        delete_button.set_child(Some(&delete_label));
-        delete_button.set_size_request(5, 5);
-        delete_button.set_hexpand(false);
-        delete_button.set_vexpand(false);
-        delete_button.set_has_frame(false);
-        delete_button.set_halign(Align::End);
-
-
         row.append(&name_label);
         row.append(&activate_button);
-        row.append(&delete_button);
 
         container.append(&row);
-
-        let apst = app_state.clone();
-        let container_clone = container.clone();
-        delete_button.connect_clicked(move |_| {
-            let mut profiles = load_profiles().to_vec();
-            profiles.remove(i);
-            save_profiles(&profiles);
-            render_profiles_list(&container_clone, &profiles, apst.clone());
-            build_settings_box(&apst.clone());
-        });
 
         let apst = app_state.clone();
         let container_clone = container.clone();
@@ -333,6 +290,10 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
 
 fn build_profiles_box(app_state: &Rc<AppState>){
     let container = &app_state.profile_list_box;
+
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
     
     let label = Label::new(Some("Profiles"));
     label.set_valign(Align::Start);
@@ -534,13 +495,6 @@ fn build_settings_box(app_state: &Rc<AppState>){
                             button_inner.set_label(&hotkey.to_string());
                         }
                     }
-
-                    // if state.contains(gdk::ModifierType::CONTROL_MASK) {
-                    //     button_inner.set_label(&format!("{} + {}", "CTRL", &keyname));
-                    // } else {
-                    //     button_inner.set_label(&keyname);
-                    // }
-
                 }
 
                 button_inner.remove_controller(&controller_clone);
@@ -551,11 +505,30 @@ fn build_settings_box(app_state: &Rc<AppState>){
 
         hotkey_row.append(&hotkey_label);
         hotkey_row.append(&hotkey_button);
+
+        let delete_button = Button::with_label("Delete");
+        // let profiles_clone = &app_state.profile_list_box.clone();
+        let capp_state = app_state.clone();
+
+        delete_button.connect_clicked(move |_| {
+            if let Some(index) = selected_index {
+                let mut profiles = load_profiles();
+                profiles.remove(index);
+                save_profiles(&profiles);
+                // change selection index to none
+                *capp_state.selected_profile_index.borrow_mut() = None;
+                // re-render profiles list
+                build_profiles_box(&capp_state);
+                // re-build settings box
+                build_settings_box(&capp_state);
+            }
+        });
         
         options_box.append(&mouse_row);
         options_box.append(&click_row);
         options_box.append(&activation_row);
         options_box.append(&hotkey_row);
+        options_box.append(&delete_button);
         frame.set_child(Some(&options_box));
     } else {
          let label = Label::new(Some("Nothing Selected."));
