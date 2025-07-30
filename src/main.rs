@@ -613,31 +613,6 @@ fn build_settings_box(app_state: &Rc<AppState>){
 
 }
 
-// fn gtk_key_to_custom_key(keyname: GString) -> Option<Key> {
-//     match keyname.as_str() {
-//         "Escape" => Some(Key::Escape),
-//         "Return" => Some(Key::Enter),
-//         "space" => Some(Key::Space),
-//         "BackSpace" => Some(Key::Backspace),
-//         "Control_L" => Some(Key::ControlL),
-//         "Control_R" => Some(Key::ControlR),
-//         "Shift_L" => Some(Key::ShiftL),
-//         "Shift_R" => Some(Key::ShiftR),
-//         "Alt_L" => Some(Key::AltL),
-//         "Alt_R" => Some(Key::AltR),
-//         f if f.starts_with('F') => {
-//             let num_str = &f[1..];
-//             if let Ok(num) = num_str.parse::<u8>() {
-//                 Some(Key::F(num))
-//             } else {
-//                 None
-//             }
-//         }
-//         c if c.len() == 1 => c.chars().next().map(Key::Char),
-//         _ => None,
-//     }
-// }
-
 fn gtk_key_to_custom_key(keyname: GString) -> Key {
     match keyname.as_str() {
         "Escape" => Key::Escape,
@@ -662,8 +637,6 @@ fn gtk_key_to_custom_key(keyname: GString) -> Key {
         _ => Key::Escape,
     }
 }
-
-
 
 fn get_profiles_path() -> PathBuf {
     let xdg_dirs = BaseDirectories::with_prefix("hyprclickr");
