@@ -8,9 +8,9 @@ use std::thread::sleep;
 use uinput::event::controller::Mouse;
 use uinput::event::{Controller};
 
-use gtk4::{gdk, prelude::*, Align, Box, ComboBoxText, CssProvider, DropDown, EventControllerKey, Expression, Frame, GestureClick, Orientation, Overlay, StringList, StyleContext, ToggleButton};
+use gtk4::{gdk, prelude::*, Align, Box, CssProvider, DropDown, EventControllerKey, Frame, GestureClick, Orientation, Overlay, Scale, StyleContext, ToggleButton};
 use gtk4::{Application, ApplicationWindow, Button, Label};
-use glib::{clone, GString};
+use glib::{GString};
 
 use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
@@ -61,12 +61,12 @@ enum Key {
     Enter,
     Space,
     Backspace,
-    Control_L,
-    Control_R,
-    Shift_L,
-    Shift_R,
-    Alt_L,
-    Alt_R,
+    ControlL,
+    ControlR,
+    ShiftL,
+    ShiftR,
+    AltL,
+    AltR,
 }
 
 impl Key {
@@ -78,12 +78,12 @@ impl Key {
             Self::Enter => "ENTER".to_string(),
             Self::Space => "SPACE".to_string(),
             Self::Backspace => "BACKSPACE".to_string(),
-            Self::Control_L => "CTRL_L".to_string(),
-            Self::Control_R => "CTRL_R".to_string(),
-            Self::Shift_L => "SHIFT_L".to_string(),
-            Self::Shift_R => "SHIFT_R".to_string(),
-            Self::Alt_L => "ALT_L".to_string(),
-            Self::Alt_R => "ALT_R".to_string(),
+            Self::ControlL => "CTRL_L".to_string(),
+            Self::ControlR => "CTRL_R".to_string(),
+            Self::ShiftL => "SHIFT_L".to_string(),
+            Self::ShiftR => "SHIFT_R".to_string(),
+            Self::AltL => "ALT_L".to_string(),
+            Self::AltR => "ALT_R".to_string(),
         }
     }
 }
@@ -117,6 +117,7 @@ struct Profile {
     activation: Activation,
     hotkey: Hotkey,
     active: bool,
+    cps: u8,
 }
 
 struct AppState {
@@ -221,11 +222,19 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
 
         // ✅ Selection only when clicking the label
         let gesture = GestureClick::new();
-        gesture.connect_pressed(clone!(@strong app_state, @strong container => move |_, _, _, _| {
-            *app_state.selected_profile_index.borrow_mut() = Some(i);
-            render_profiles_list(&container, &load_profiles(), app_state.clone());
-            build_settings_box(&app_state);
-        }));
+        // gesture.connect_pressed(clone!(@strong app_state, @strong container => move |_, _, _, _| {
+        //     *app_state.selected_profile_index.borrow_mut() = Some(i);
+        //     render_profiles_list(&container, &load_profiles(), app_state.clone());
+        //     build_settings_box(&app_state);
+        // }));
+        let capp_state = app_state.clone();
+        let con_clone = container.clone();
+
+        gesture.connect_pressed(move |_, _, _, _| {
+            *capp_state.selected_profile_index.borrow_mut() = Some(i);
+            render_profiles_list(&con_clone, &load_profiles(), capp_state.clone());
+            build_settings_box(&capp_state);
+        });
         name_label.add_controller(gesture);
 
         let is_selected = app_state.selected_profile_index.borrow().map_or(false, |selected| selected == i);
@@ -279,6 +288,7 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
             activation: Activation::Toggle,
             hotkey: Hotkey { modifiers: (vec![]), key: (Key::F(8)) },
             active: false,
+            cps: 15,
         });
         save_profiles(&profiles);
         *app_state.selected_profile_index.borrow_mut() = Some(profiles.len() - 1);
@@ -506,6 +516,24 @@ fn build_settings_box(app_state: &Rc<AppState>){
         hotkey_row.append(&hotkey_label);
         hotkey_row.append(&hotkey_button);
 
+        let cps_row = Box::builder().orientation(Orientation::Horizontal).spacing(100).build();
+        let cps_label = Label::new(Some("CPS"));
+        let cps_slider = Scale::with_range(Orientation::Horizontal, 0.0, 50.0, 1.0);
+        cps_slider.set_value(profile.cps as f64);
+        cps_slider.set_hexpand(true);
+        cps_slider.set_draw_value(true);
+
+        cps_slider.connect_value_changed(move |val| {
+            if let Some(index) = selected_index {
+                let mut profiles = load_profiles();
+                profiles[index].cps = val.value() as u8;
+                save_profiles(&profiles);
+            }
+        });
+    
+        cps_row.append(&cps_label);
+        cps_row.append(&cps_slider);
+
         let delete_button = Button::with_label("Delete");
         // let profiles_clone = &app_state.profile_list_box.clone();
         let capp_state = app_state.clone();
@@ -528,6 +556,7 @@ fn build_settings_box(app_state: &Rc<AppState>){
         options_box.append(&click_row);
         options_box.append(&activation_row);
         options_box.append(&hotkey_row);
+        options_box.append(&cps_row);
         options_box.append(&delete_button);
         frame.set_child(Some(&options_box));
     } else {
@@ -555,12 +584,12 @@ fn gtk_key_to_custom_key(keyname: GString) -> Option<Key> {
         "Return" => Some(Key::Enter),
         "space" => Some(Key::Space),
         "BackSpace" => Some(Key::Backspace),
-        "Control_L" => Some(Key::Control_L),
-        "Control_R" => Some(Key::Control_R),
-        "Shift_L" => Some(Key::Shift_L),
-        "Shift_R" => Some(Key::Shift_R),
-        "Alt_L" => Some(Key::Alt_L),
-        "Alt_R" => Some(Key::Alt_R),
+        "Control_L" => Some(Key::ControlL),
+        "Control_R" => Some(Key::ControlR),
+        "Shift_L" => Some(Key::ShiftL),
+        "Shift_R" => Some(Key::ShiftR),
+        "Alt_L" => Some(Key::AltL),
+        "Alt_R" => Some(Key::AltR),
         f if f.starts_with('F') => {
             let num_str = &f[1..];
             if let Ok(num) = num_str.parse::<u8>() {
