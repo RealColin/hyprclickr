@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::thread::sleep;
 
-use uinput::event::controller::Mouse;
+use uinput::event::controller::{self, Mouse};
 use uinput::event::{Controller};
 
 use gtk4::{gdk, prelude::*, Align, Box, CssProvider, DropDown, EventControllerKey, Frame, GestureClick, Orientation, Overlay, Scale, StyleContext, ToggleButton};
@@ -22,6 +22,25 @@ enum MouseButton {
     Middle,
 }
 
+impl MouseButton {
+    fn to_int(&self) -> u32 {
+        match self {
+            Self::Left => 0,
+            Self::Right => 1,
+            Self::Middle => 2,
+        }
+    }
+
+    fn from_int(int: u32) -> MouseButton {
+        match int {
+            0 => Self::Left,
+            1 => Self::Right,
+            2 => Self::Middle,
+            _ => Self::Left
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum ClickPattern {
     Normal,
@@ -30,10 +49,48 @@ enum ClickPattern {
     Drag,
 }
 
+impl ClickPattern {
+    fn to_int(&self) -> u32 {
+        match self {
+            Self::Normal => 0,
+            Self::Jitter => 1,
+            Self::Butterfly => 2,
+            Self::Drag => 3,
+        }
+    }
+
+    fn from_int(int: u32) -> ClickPattern {
+        match int {
+            0 => Self::Normal,
+            1 => Self::Jitter,
+            2 => Self::Butterfly,
+            3 => Self::Drag,
+            _ => Self::Normal,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum Activation {
     Toggle,
     Hold,
+}
+
+impl Activation {
+    fn to_int(&self) -> u32 {
+        match self {
+            Self::Toggle => 0,
+            Self::Hold => 1,
+        }
+    }
+
+    fn from_int(int: u32) -> Activation {
+        match int {
+            0 => Self::Toggle,
+            1 => Self::Hold,
+            _ => Self::Toggle,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -340,6 +397,92 @@ fn build_profiles_box(app_state: &Rc<AppState>){
 
 }
 
+fn create_dropdown_row<T, F>(
+    label_text: &str, 
+    options: &[&str], 
+    selected_index: u32,
+    spacing: i32, 
+    on_select: F,
+) -> Box
+where
+    T: 'static,
+    F: Fn(u32) + 'static,
+{
+    let row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
+    let label = Label::new(Some(&label_text));
+    let dropdown = DropDown::from_strings(options);
+    dropdown.set_selected(selected_index);
+
+    dropdown.connect_selected_notify(move |dd| {
+        let selected = dd.selected();
+        on_select(selected);
+    });
+
+    row.append(&label);
+    row.append(&dropdown);
+    row
+}
+
+fn create_hotkey_row(curr_key: String, index: usize, spacing: i32) -> Box{
+    let row = Box::builder().orientation(Orientation::Horizontal).spacing(spacing).build();
+    let label = Label::new(Some("Hotkey"));
+    let button = Button::with_label(&curr_key);
+    let button_cloned = button.clone();
+
+
+    button.connect_clicked(move |_| {
+        let controller = EventControllerKey::new();
+        let controller_clone = controller.clone();
+        let button_inner = button_cloned.clone();
+
+        controller.connect_key_released(move |_, keyval, _, state| {
+            if let Some(name) = keyval.name() {
+                let mut modifiers = vec![];
+
+                if state.contains(gdk::ModifierType::CONTROL_MASK) {
+                    modifiers.push(Modifier::Ctrl);
+                }
+                if state.contains(gdk::ModifierType::SHIFT_MASK) {
+                    modifiers.push(Modifier::Shift);
+                }
+                if state.contains(gdk::ModifierType::ALT_MASK) {
+                    modifiers.push(Modifier::Alt);
+                }
+
+                match name.as_str() {
+                    "Control_L" => modifiers.clear(),
+                    "Control_R" => modifiers.clear(),
+                    "Alt_L" => modifiers.clear(),
+                    "Alt_R" => modifiers.clear(),
+                    "Shift_L" => modifiers.clear(),
+                    "Shift_R" => modifiers.clear(),
+                    _ => (),
+                }
+
+                let key = gtk_key_to_custom_key(name);
+
+                let hotkey = Hotkey {
+                    modifiers,
+                    key
+                };
+
+                let mut tmp = load_profiles();
+                tmp[index].hotkey = hotkey.clone();
+                save_profiles(&tmp);
+                button_inner.set_label(&hotkey.to_string());
+            }
+
+            button_inner.remove_controller(&controller_clone);
+        });
+
+        button_cloned.add_controller(controller);
+    });
+
+    row.append(&label);
+    row.append(&button);
+    row
+}
+
 fn build_settings_box(app_state: &Rc<AppState>){
     let container = &app_state.settings_box;
     container.set_focusable(true);
@@ -360,7 +503,9 @@ fn build_settings_box(app_state: &Rc<AppState>){
     let selected_index = *app_state.selected_profile_index.borrow();
     let profiles = load_profiles();
 
-    if let Some(profile) = selected_index.and_then(|i| profiles.get(i)) {
+    if let Some(index) = selected_index {
+        let profile = &profiles[index];
+
         let options_box = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(10)
@@ -369,152 +514,46 @@ fn build_settings_box(app_state: &Rc<AppState>){
         options_box.set_margin_start(5);
         options_box.set_margin_top(20);
 
-        let mouse_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
-        let mouse_label = Label::new(Some("Mouse Button"));
-        let mouse_options = vec!["Left", "Right", "Middle"];
-        let mouse_dropdown = DropDown::from_strings(&mouse_options);
-        let mouse_selected = match profile.mouse_button {
-            MouseButton::Left => 0,
-            MouseButton::Right => 1,
-            MouseButton::Middle => 2,
-        };
-        mouse_dropdown.set_selected(mouse_selected);
-        mouse_dropdown.connect_selected_notify(move |dd| {
-            let selected = match dd.selected() {
-                0 => MouseButton::Left,
-                1 => MouseButton::Right,
-                2 => MouseButton::Middle,
-                _ => MouseButton::Right,
-            };
-
-            if let Some(index) = selected_index {
-                let mut profiles = load_profiles();
-                profiles[index].mouse_button = selected;
-                save_profiles(&profiles);
+        let mouse_row = create_dropdown_row::<MouseButton, _>(
+            "Mouse Button",
+            &["Left", "Right", "Middle"],
+            profile.mouse_button.to_int(),
+            200,
+            move |selected| {
+                let selected = MouseButton::from_int(selected);
+                let mut tmp = load_profiles();
+                tmp[index].mouse_button = selected;
+                save_profiles(&tmp);
             }
-        });
+        );
 
-        mouse_row.append(&mouse_label);
-        mouse_row.append(&mouse_dropdown);
-
-        let click_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
-        let click_label = Label::new(Some("Click Pattern"));
-        let click_options = vec!["Normal", "Jitter", "Butterfly", "Drag"];
-        let click_dropdown = DropDown::from_strings(&click_options);
-        let click_selected = match profile.click_pattern {
-            ClickPattern::Normal => 0,
-            ClickPattern::Jitter => 1,
-            ClickPattern::Butterfly => 2,
-            ClickPattern::Drag => 3,
-        };
-        click_dropdown.set_selected(click_selected);
-        click_dropdown.connect_selected_notify(move |dd| {
-            let selected = match dd.selected() {
-                0 => ClickPattern::Normal,
-                1 => ClickPattern::Jitter,
-                2 => ClickPattern::Butterfly,
-                3 => ClickPattern::Drag,
-                _ => ClickPattern::Normal
-            };
-
-            if let Some(index) = selected_index {
-                let mut profiles = load_profiles();
-                profiles[index].click_pattern = selected;
-                save_profiles(&profiles);
+        let click_row = create_dropdown_row::<ClickPattern, _>(
+            "Click Pattern",
+            &["Normal", "Jitter", "Butterfly", "Drag"],
+            profile.click_pattern.to_int(),
+            200,
+            move |selected| {
+                let selected = ClickPattern::from_int(selected);
+                let mut tmp = load_profiles();
+                tmp[index].click_pattern = selected;
+                save_profiles(&tmp);
             }
-        });
+        );
 
-        click_row.append(&click_label);
-        click_row.append(&click_dropdown);
-
-        let activation_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
-        let activation_label = Label::new(Some("Activation"));
-        let activation_options = vec!["Toggle", "Hold"];
-        let activation_dropdown = DropDown::from_strings(&activation_options);
-        let activation_selected = match profile.activation {
-            Activation::Toggle => 0,
-            Activation::Hold => 1,
-        };
-        activation_dropdown.set_selected(activation_selected);
-        activation_dropdown.connect_selected_item_notify(move |dd| {
-            let selected = match dd.selected() {
-                0 => Activation::Toggle,
-                1 => Activation::Hold,
-                _ => Activation::Toggle,
-            };
-
-            if let Some(index) = selected_index {
-                let mut profiles = load_profiles();
-                profiles[index].activation = selected;
-                save_profiles(&profiles);
+        let activation_row = create_dropdown_row::<ClickPattern, _>(
+            "Activation",
+            &["Toggle", "Hold"],
+            profile.activation.to_int(),
+            200,
+            move |selected| {
+                let selected = Activation::from_int(selected);
+                let mut tmp = load_profiles();
+                tmp[index].activation = selected;
+                save_profiles(&tmp);
             }
-        });
+        );
 
-        activation_row.append(&activation_label);
-        activation_row.append(&activation_dropdown);
-
-        let hotkey_row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
-        let hotkey_label = Label::new(Some("Hotkey"));
-        let hotkey_button = Button::with_label(&profile.hotkey.to_string());
-        let hotkey_button_clone = hotkey_button.clone();
-
-        hotkey_button.connect_clicked(move |_| {
-            let controller = EventControllerKey::new();
-            let controller_clone = controller.clone();
-            let button_inner = hotkey_button_clone.clone();
-
-            controller.connect_key_released(move |_, keyval, _, state| {
-                if let Some(keyname) = gdk::Key::from(keyval).name() {
-                    let mut modifiers = vec![];
-
-                    if state.contains(gdk::ModifierType::CONTROL_MASK) {
-                        modifiers.push(Modifier::Ctrl);
-                    }
-                    if state.contains(gdk::ModifierType::SHIFT_MASK) {
-                        modifiers.push(Modifier::Shift);
-                    }
-                    if state.contains(gdk::ModifierType::ALT_MASK) {
-                        modifiers.push(Modifier::Alt);
-                    }
-
-                    match keyname.as_str() {
-                        "Control_L" => modifiers.clear(),
-                        "Control_R" => modifiers.clear(),
-                        "Alt_L" => modifiers.clear(),
-                        "Alt_R" => modifiers.clear(),
-                        "Shift_L" => modifiers.clear(),
-                        "Shift_R" => modifiers.clear(),
-                        _ => (),
-                    }
-
-                    let okey = gtk_key_to_custom_key(keyname);
-
-                    if let Some(key) = okey {
-                        let hotkey = Hotkey {
-                            modifiers,
-                            key,
-                        };
-
-                        let cloned_hotkey = hotkey.clone();
-
-                        if let Some(index) = selected_index {
-                            let mut profiles = load_profiles();
-                            profiles[index].hotkey = cloned_hotkey;
-                            save_profiles(&profiles);
-
-                            button_inner.set_label(&hotkey.to_string());
-                        }
-                    }
-                }
-
-                button_inner.remove_controller(&controller_clone);
-            });
-
-            hotkey_button_clone.add_controller(controller);
-        });
-
-        hotkey_row.append(&hotkey_label);
-        hotkey_row.append(&hotkey_button);
+        let hotkey_row = create_hotkey_row(profile.hotkey.to_string(), index, 200);
 
         let cps_row = Box::builder().orientation(Orientation::Horizontal).spacing(100).build();
         let cps_label = Label::new(Some("CPS"));
@@ -535,7 +574,6 @@ fn build_settings_box(app_state: &Rc<AppState>){
         cps_row.append(&cps_slider);
 
         let delete_button = Button::with_label("Delete");
-        // let profiles_clone = &app_state.profile_list_box.clone();
         let capp_state = app_state.clone();
 
         delete_button.connect_clicked(move |_| {
@@ -543,11 +581,8 @@ fn build_settings_box(app_state: &Rc<AppState>){
                 let mut profiles = load_profiles();
                 profiles.remove(index);
                 save_profiles(&profiles);
-                // change selection index to none
                 *capp_state.selected_profile_index.borrow_mut() = None;
-                // re-render profiles list
                 build_profiles_box(&capp_state);
-                // re-build settings box
                 build_settings_box(&capp_state);
             }
         });
@@ -578,52 +613,57 @@ fn build_settings_box(app_state: &Rc<AppState>){
 
 }
 
-fn gtk_key_to_custom_key(keyname: GString) -> Option<Key> {
+// fn gtk_key_to_custom_key(keyname: GString) -> Option<Key> {
+//     match keyname.as_str() {
+//         "Escape" => Some(Key::Escape),
+//         "Return" => Some(Key::Enter),
+//         "space" => Some(Key::Space),
+//         "BackSpace" => Some(Key::Backspace),
+//         "Control_L" => Some(Key::ControlL),
+//         "Control_R" => Some(Key::ControlR),
+//         "Shift_L" => Some(Key::ShiftL),
+//         "Shift_R" => Some(Key::ShiftR),
+//         "Alt_L" => Some(Key::AltL),
+//         "Alt_R" => Some(Key::AltR),
+//         f if f.starts_with('F') => {
+//             let num_str = &f[1..];
+//             if let Ok(num) = num_str.parse::<u8>() {
+//                 Some(Key::F(num))
+//             } else {
+//                 None
+//             }
+//         }
+//         c if c.len() == 1 => c.chars().next().map(Key::Char),
+//         _ => None,
+//     }
+// }
+
+fn gtk_key_to_custom_key(keyname: GString) -> Key {
     match keyname.as_str() {
-        "Escape" => Some(Key::Escape),
-        "Return" => Some(Key::Enter),
-        "space" => Some(Key::Space),
-        "BackSpace" => Some(Key::Backspace),
-        "Control_L" => Some(Key::ControlL),
-        "Control_R" => Some(Key::ControlR),
-        "Shift_L" => Some(Key::ShiftL),
-        "Shift_R" => Some(Key::ShiftR),
-        "Alt_L" => Some(Key::AltL),
-        "Alt_R" => Some(Key::AltR),
+        "Escape" => Key::Escape,
+        "Return" => Key::Enter,
+        "space" => Key::Space,
+        "BackSpace" => Key::Backspace,
+        "Control_L" => Key::ControlL,
+        "Control_R" => Key::ControlR,
+        "Shift_L" => Key::ShiftL,
+        "Shift_R" => Key::ShiftR,
+        "Alt_L" => Key::AltL,
+        "Alt_R" => Key::AltR,
         f if f.starts_with('F') => {
             let num_str = &f[1..];
             if let Ok(num) = num_str.parse::<u8>() {
-                Some(Key::F(num))
+                Key::F(num)
             } else {
-                None
+                Key::Escape
             }
         }
-        c if c.len() == 1 => c.chars().next().map(Key::Char),
-        _ => None,
+        c if c.len() == 1 => c.chars().next().map(Key::Char).expect("Weird Crash"),
+        _ => Key::Escape,
     }
-
-    // if let Some(name) = key.name() {
-    //     match name.as_str() {
-    //         "Escape" => Some(Key::Escape),
-    //         "Return" => Some(Key::Enter),
-    //         "Tab" => Some(Key::Tab),
-    //         "space" => Some(Key::Space),
-    //         "BackSpace" => Some(Key::Backspace),
-    //         f if f.starts_with('F') => {
-    //             let num_str = &f[1..];
-    //             if let Ok(num) = num_str.parse::<u8>() {
-    //                 Some(Key::F(num))
-    //             } else {
-    //                 None
-    //             }
-    //         }
-    //         c if c.len() == 1 => c.chars().next().map(Key::Char),
-    //         _ => None,
-    //     }
-    // } else {
-    //     None
-    // }
 }
+
+
 
 fn get_profiles_path() -> PathBuf {
     let xdg_dirs = BaseDirectories::with_prefix("hyprclickr");
