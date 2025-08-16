@@ -238,8 +238,6 @@ fn build_ui(app: &Application) {
     let inner = Box::new(Orientation::Horizontal, 10);
     inner.append(&app_state.profile_list_box);
     inner.append(&app_state.settings_box);
-    // inner.append(&build_profiles_box(&app_state));
-    // inner.append(&build_settings_box(&app_state));
 
     let title_label = Label::new(Some("Hyprclickr"));
     let outer = Box::new(Orientation::Vertical, 10);
@@ -250,14 +248,11 @@ fn build_ui(app: &Application) {
     outer.append(&title_label);
     outer.append(&inner);
 
-    // let fixed = Fixed::new();
-    // fixed.put(&profiles_label, 10.0, 20.0);
-
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Hyprclickr")
-        .default_width(600)
-        .default_height(400)
+        .default_width(500)
+        .default_height(310)
         .resizable(false)
         .child(&outer)
         .build();
@@ -277,13 +272,7 @@ fn render_profiles_list(container: &Box, profiles: &[Profile], app_state: Rc<App
         name_label.set_hexpand(true);
         name_label.set_halign(Align::Start);
 
-        // ✅ Selection only when clicking the label
         let gesture = GestureClick::new();
-        // gesture.connect_pressed(clone!(@strong app_state, @strong container => move |_, _, _, _| {
-        //     *app_state.selected_profile_index.borrow_mut() = Some(i);
-        //     render_profiles_list(&container, &load_profiles(), app_state.clone());
-        //     build_settings_box(&app_state);
-        // }));
         let capp_state = app_state.clone();
         let con_clone = container.clone();
 
@@ -382,9 +371,11 @@ fn build_profiles_box(app_state: &Rc<AppState>){
         .build();
 
     frame.set_width_request(150);
-    frame.set_height_request(340);
+    frame.set_height_request(250);
     frame.set_margin_start(10);
     frame.set_margin_top(7);
+    frame.set_hexpand(false);
+    frame.set_vexpand(false);
 
     let overlay = Overlay::new();
     overlay.set_child(Some(&frame));
@@ -401,32 +392,45 @@ fn create_dropdown_row<T, F>(
     label_text: &str, 
     options: &[&str], 
     selected_index: u32,
-    spacing: i32, 
     on_select: F,
 ) -> Box
 where
     T: 'static,
     F: Fn(u32) + 'static,
 {
-    let row = Box::builder().orientation(Orientation::Horizontal).spacing(200).build();
+    let row = Box::builder().orientation(Orientation::Horizontal).build();
+    row.set_halign(Align::Fill);
+
     let label = Label::new(Some(&label_text));
     let dropdown = DropDown::from_strings(options);
     dropdown.set_selected(selected_index);
+    dropdown.set_hexpand(false);
+    dropdown.set_width_request(100);
 
     dropdown.connect_selected_notify(move |dd| {
         let selected = dd.selected();
         on_select(selected);
     });
 
+    
+    let spacer = Box::builder().orientation(Orientation::Horizontal).build();
+    spacer.set_hexpand(true);
+
     row.append(&label);
+    row.append(&spacer);
     row.append(&dropdown);
     row
 }
 
-fn create_hotkey_row(curr_key: String, index: usize, spacing: i32) -> Box{
-    let row = Box::builder().orientation(Orientation::Horizontal).spacing(spacing).build();
+fn create_hotkey_row(curr_key: String, index: usize) -> Box{
+    let row = Box::builder().orientation(Orientation::Horizontal).build();
+    row.set_halign(Align::Fill);
     let label = Label::new(Some("Hotkey"));
+    label.set_xalign(0.0);
+    let spacer = Box::builder().orientation(Orientation::Horizontal).build();
+    spacer.set_hexpand(true);
     let button = Button::with_label(&curr_key);
+    button.set_halign(Align::Fill);
     let button_cloned = button.clone();
 
 
@@ -479,6 +483,7 @@ fn create_hotkey_row(curr_key: String, index: usize, spacing: i32) -> Box{
     });
 
     row.append(&label);
+    row.append(&spacer);
     row.append(&button);
     row
 }
@@ -495,10 +500,11 @@ fn build_settings_box(app_state: &Rc<AppState>){
     let frame = Frame::builder()
         .build();
 
-    frame.set_width_request(400);
-    frame.set_height_request(340);
+    frame.set_width_request(250);
+    frame.set_height_request(250);
     frame.set_margin_start(10);
     frame.set_margin_top(7);
+    frame.set_hexpand(true);
 
     let selected_index = *app_state.selected_profile_index.borrow();
     let profiles = load_profiles();
@@ -518,7 +524,6 @@ fn build_settings_box(app_state: &Rc<AppState>){
             "Mouse Button",
             &["Left", "Right", "Middle"],
             profile.mouse_button.to_int(),
-            200,
             move |selected| {
                 let selected = MouseButton::from_int(selected);
                 let mut tmp = load_profiles();
@@ -531,7 +536,6 @@ fn build_settings_box(app_state: &Rc<AppState>){
             "Click Pattern",
             &["Normal", "Jitter", "Butterfly", "Drag"],
             profile.click_pattern.to_int(),
-            200,
             move |selected| {
                 let selected = ClickPattern::from_int(selected);
                 let mut tmp = load_profiles();
@@ -544,7 +548,6 @@ fn build_settings_box(app_state: &Rc<AppState>){
             "Activation",
             &["Toggle", "Hold"],
             profile.activation.to_int(),
-            200,
             move |selected| {
                 let selected = Activation::from_int(selected);
                 let mut tmp = load_profiles();
@@ -553,7 +556,7 @@ fn build_settings_box(app_state: &Rc<AppState>){
             }
         );
 
-        let hotkey_row = create_hotkey_row(profile.hotkey.to_string(), index, 200);
+        let hotkey_row = create_hotkey_row(profile.hotkey.to_string(), index);
 
         let cps_row = Box::builder().orientation(Orientation::Horizontal).spacing(100).build();
         let cps_label = Label::new(Some("CPS"));
